@@ -16,6 +16,7 @@ from torch import optim
 import numpy as np
 import torch
 from torch import distributions
+from torch.distributions import Categorical
 
 from cs285.infrastructure import pytorch_util as ptu
 from cs285.policies.base_policy import BasePolicy
@@ -109,6 +110,7 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             itertools.chain([self.logstd], self.mean_net.parameters()),
             self.learning_rate
         )
+        self.loss = nn.MSELoss(reduction='mean')
 
     def save(self, filepath):
         """
@@ -129,8 +131,14 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         # through it. For example, you can return a torch.FloatTensor. You can also
         # return more flexible objects, such as a
         # `torch.distributions.Distribution` object. It's up to you!
-        raise NotImplementedError
+        #raise NotImplementedError
+        mean = self.mean_net(observation)
+        std = torch.exp(self.logstd)
 
+        dist = distributions.Normal(mean, std)
+        action = dist.rsample()
+        return action
+    
     def update(self, observations, actions):
         """
         Updates/trains the policy
@@ -141,8 +149,21 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             dict: 'Training Loss': supervised learning loss
         """
         # TODO: update the policy and return the loss
-        loss = TODO
+        observations = ptu.from_numpy(observations)
+        actions = ptu.from_numpy(actions)
+        pred = self.forward(observations)
+
+        loss = self.loss(pred, actions)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
         return {
             # You can add extra logging information here, but keep this line
             'Training Loss': ptu.to_numpy(loss),
         }
+    
+    def get_action(self, obs: np.ndarray) -> np.ndarray:
+        action = self.forward(ptu.from_numpy(obs))
+        return ptu.to_numpy(action)
